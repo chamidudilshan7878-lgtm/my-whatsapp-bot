@@ -3,13 +3,29 @@ const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const axios = require('axios');
 const express = require('express');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-let pairingCodeDisplay = "Waiting for code generation...";
+let qrCodeImage = "";
 
 app.get('/', (req, res) => {
-    res.send(`<h1 style="font-family: sans-serif; text-align: center; margin-top: 20vh;">WhatsApp Pairing Code:<br><span style="color: #007bff; font-size: 48px;">${pairingCodeDisplay}</span></h1><p style="text-align: center;">Refresh the page if code is not visible yet.</p>`);
+    if (qrCodeImage) {
+        res.send(`
+            <div style="text-align: center; margin-top: 15vh; font-family: sans-serif;">
+                <h1>Scan WhatsApp QR Code:</h1>
+                <img src="${qrCodeImage}" alt="QR Code" style="width: 300px; height: 300px; border: 2px solid #ccc; border-radius: 10px; padding: 10px;"/>
+                <p>Refresh the page if code expires or is not visible.</p>
+            </div>
+        `);
+    } else {
+        res.send(`
+            <div style="text-align: center; margin-top: 20vh; font-family: sans-serif;">
+                <h1>Generating QR Code, please wait...</h1>
+                <p>Refresh the page in a few seconds.</p>
+            </div>
+        `);
+    }
 });
 
 app.listen(PORT, () => {
@@ -28,23 +44,18 @@ async function connectToWhatsApp() {
         printQRInTerminal: false
     });
 
-    if (!sock.authState.creds.registered) {
-        const phoneNumber = process.env.PHONE_NUMBER; 
-        if (phoneNumber) {
-            setTimeout(async () => {
-                try {
-                    let code = await sock.requestPairingCode(phoneNumber);
-                    pairingCodeDisplay = code;
-                    console.log(`\n========================================\nYOUR PAIRING CODE: ${code}\n========================================\n`);
-                } catch (err) {
-                    console.log('Error getting pairing code:', err);
-                }
-            }, 4000);
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        if (qr) {
+            try {
+                qrCodeImage = await QRCode.toDataURL(qr);
+                console.log('QR Code generated successfully!');
+            } catch (err) {
+                console.log('Error generating QR code image:', err);
+            }
         }
-    }
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
         if(connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             if(shouldReconnect) {
@@ -52,7 +63,7 @@ async function connectToWhatsApp() {
             }
         } else if(connection === 'open') {
             console.log('Bot Connected Successfully!');
-            pairingCodeDisplay = "Connected Successfully! ✅";
+            qrCodeImage = ""; // Connected అయిన පසු QR අයින් වේ
         }
     });
 
