@@ -8,6 +8,7 @@ const QRCode = require('qrcode');
 const app = express();
 const PORT = process.env.PORT || 3000;
 let qrCodeImage = "";
+let pairingCodeDisplay = "Waiting for code generation...";
 
 app.get('/', (req, res) => {
     if (qrCodeImage) {
@@ -19,12 +20,7 @@ app.get('/', (req, res) => {
             </div>
         `);
     } else {
-        res.send(`
-            <div style="text-align: center; margin-top: 20vh; font-family: sans-serif;">
-                <h1>Generating QR Code, please wait...</h1>
-                <p>Refresh the page in a few seconds.</p>
-            </div>
-        `);
+        res.send(`<h1 style="font-family: sans-serif; text-align: center; margin-top: 20vh;">WhatsApp Pairing Code:<br><span style="color: #007bff; font-size: 48px;">${pairingCodeDisplay}</span></h1><p style="text-align: center;">Refresh the page if code is not visible yet.</p>`);
     }
 });
 
@@ -63,7 +59,8 @@ async function connectToWhatsApp() {
             }
         } else if(connection === 'open') {
             console.log('Bot Connected Successfully!');
-            qrCodeImage = ""; // Connected అయిన පසු QR අයින් වේ
+            qrCodeImage = "";
+            pairingCodeDisplay = "Connected Successfully! ✅";
         }
     });
 
@@ -116,15 +113,18 @@ async function connectToWhatsApp() {
             }
             await sock.sendMessage(sender, { text: 'Downloading TikTok video, please wait...' });
             try {
-                const res = await axios.get(`https://tikwm.com/api/?url=${encodeURIComponent(tikTokUrl)}`);
-                if (res.data && res.data.data) {
+                const res = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(tikTokUrl)}`);
+                if (res.data && res.data.code === 0 && res.data.data) {
                     const videoData = res.data.data;
                     await sock.sendMessage(sender, { 
                         video: { url: videoData.play }, 
-                        caption: `*Title:* ${videoData.title}\n*Author:* ${videoData.author.nickname}` 
+                        caption: `*Title:* ${videoData.title || 'TikTok Video'}\n*Author:* ${videoData.author?.nickname || 'Unknown'}` 
                     });
+                } else {
+                    await sock.sendMessage(sender, { text: 'Failed to fetch TikTok video. Please try another link.' });
                 }
             } catch (e) {
+                console.log('TikTok error:', e.message);
                 await sock.sendMessage(sender, { text: 'Error processing TikTok link.' });
             }
         }
