@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Bot with Pairing Code and Express",
+  "description": "WhatsApp Bot with QR Code and Express",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,6 +11,7 @@
     "@whiskeysockets/baileys": "^6.7.9",
     "axios": "^1.7.2",
     "express": "^4.19.2",
-    "pino": "^9.0.0"
+    "pino": "^9.0.0",
+    "qrcode": "^1.5.3"
   }
 }
