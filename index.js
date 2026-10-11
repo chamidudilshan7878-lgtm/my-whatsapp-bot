@@ -2,6 +2,19 @@ const { default: makeWASocket, useMultiFileAuthState, downloadMediaMessage, make
 const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const axios = require('axios');
+const express = require('express');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+let pairingCodeDisplay = "Waiting for code generation...";
+
+app.get('/', (req, res) => {
+    res.send(`<h1 style="font-family: sans-serif; text-align: center; margin-top: 20vh;">WhatsApp Pairing Code:<br><span style="color: #007bff; font-size: 48px;">${pairingCodeDisplay}</span></h1><p style="text-align: center;">Refresh the page if code is not visible yet.</p>`);
+});
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -21,6 +34,7 @@ async function connectToWhatsApp() {
             setTimeout(async () => {
                 try {
                     let code = await sock.requestPairingCode(phoneNumber);
+                    pairingCodeDisplay = code;
                     console.log(`\n========================================\nYOUR PAIRING CODE: ${code}\n========================================\n`);
                 } catch (err) {
                     console.log('Error getting pairing code:', err);
@@ -38,6 +52,7 @@ async function connectToWhatsApp() {
             }
         } else if(connection === 'open') {
             console.log('Bot Connected Successfully!');
+            pairingCodeDisplay = "Connected Successfully! ✅";
         }
     });
 
@@ -46,11 +61,9 @@ async function connectToWhatsApp() {
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.fromMe) return;
-
         const messageType = Object.keys(m.message)[0];
         const sender = m.key.remoteJid;
 
-        // View Once Media Handler
         if (messageType === 'viewOnceMessage' || messageType === 'viewOnceMessageV2') {
             try {
                 const actualMessage = m.message[messageType].message;
@@ -61,7 +74,6 @@ async function connectToWhatsApp() {
                     {},
                     { logger: pino({ level: 'silent' }) }
                 );
-                
                 if (mediaType === 'imageMessage') {
                     await sock.sendMessage(sender, { image: stream, caption: '💾 Saved View Once Image!' });
                 } else if (mediaType === 'videoMessage') {
@@ -75,25 +87,22 @@ async function connectToWhatsApp() {
         const text = m.message.conversation || m.message.extendedTextMessage?.text;
         if (!text) return;
 
-        // DP Download Command: !dp 94771234567
         if (text.startsWith('!dp ')) {
             const number = text.split(' ')[1].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
             try {
                 const dpUrl = await sock.profilePictureUrl(number, 'image');
                 await sock.sendMessage(sender, { image: { url: dpUrl }, caption: 'Here is the Profile Picture!' });
             } catch (e) {
-                await sock.sendMessage(sender, { text: 'Could not fetch profile picture (Privacy settings might be on).' });
+                await sock.sendMessage(sender, { text: 'Could not fetch profile picture.' });
             }
         }
 
-        // TikTok Download Command: !tiktok <url>
         if (text.startsWith('!tiktok ')) {
             const tikTokUrl = text.split(' ')[1];
             if (!tikTokUrl) {
-                app.sendMessage(sender, { text: 'Please provide a valid TikTok link.' });
+                await sock.sendMessage(sender, { text: 'Please provide a valid TikTok link.' });
                 return;
             }
-
             await sock.sendMessage(sender, { text: 'Downloading TikTok video, please wait...' });
             try {
                 const res = await axios.get(`https://tikwm.com/api/?url=${encodeURIComponent(tikTokUrl)}`);
@@ -101,10 +110,8 @@ async function connectToWhatsApp() {
                     const videoData = res.data.data;
                     await sock.sendMessage(sender, { 
                         video: { url: videoData.play }, 
-                        caption: `*Title:* ${videoData.title}\n*Author:* ${videoData.author.nickname}\n\nDownloaded via Bot` 
+                        caption: `*Title:* ${videoData.title}\n*Author:* ${videoData.author.nickname}` 
                     });
-                } else {
-                    await sock.sendMessage(sender, { text: 'Failed to download TikTok video.' });
                 }
             } catch (e) {
                 await sock.sendMessage(sender, { text: 'Error processing TikTok link.' });
