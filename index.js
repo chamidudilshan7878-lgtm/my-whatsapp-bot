@@ -71,23 +71,28 @@ async function connectToWhatsApp() {
         if (!m.message || m.key.fromMe) return;
         const sender = m.key.remoteJid;
 
-        const text = m.message.conversation || m.message.extendedTextMessage?.text;
-        if (!text) return;
+        // සියලුම ආකාරයේ මැසේජ් කන්ටේනර් වලින් text එක ලබා ගැනීම
+        const msgBody = m.message?.conversation || 
+                        m.message?.extendedTextMessage?.text || 
+                        m.message?.ephemeralMessage?.message?.conversation || 
+                        m.message?.ephemeralMessage?.message?.extendedTextMessage?.text || '';
 
-        // බොට් එක අවදි කිරීමට සහ පරීක්ෂා කිරීමට ping විධානය
-        if (text.toLowerCase() === '!ping') {
+        if (!msgBody) return;
+
+        // බොට් පරීක්ෂා කිරීමේ ping විධානය
+        if (msgBody.toLowerCase() === '!ping') {
             await sock.sendMessage(sender, { text: 'Bot is active and running! 🚀' });
             return;
         }
 
-        // TikTok ඩවුන්ලෝඩ් විධානය (HD සහ Normal ගුණාත්මක භාවයෙන්)
-        if (text.startsWith('!tiktok ')) {
-            const args = text.split(' ');
+        // TikTok ඩවුන්ලෝඩ් විධානය (HD සහ Normal)
+        if (msgBody.startsWith('!tiktok ')) {
+            const args = msgBody.split(' ');
             const tikTokUrl = args[1];
-            const quality = args[2] ? args[2].toLowerCase() : 'normal'; // hd හෝ normal
+            const quality = args[2] ? args[2].toLowerCase() : 'normal';
 
             if (!tikTokUrl) {
-                await sock.sendMessage(sender, { text: 'කරුණාකර TikTok ලින්ක් එකක් ලබා දෙන්න. (උදා: !tiktok [link] hd)' });
+                await sock.sendMessage(sender, { text: 'කරුණාකර TikTok ලින්ක් එකක් ලබා දෙන්න. (උදා: !tiktok https://vt.tiktok.com/... hd)' });
                 return;
             }
 
@@ -97,8 +102,6 @@ async function connectToWhatsApp() {
                 const res = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(tikTokUrl)}`);
                 if (res.data && res.data.code === 0 && res.data.data) {
                     const videoData = res.data.data;
-                    
-                    // HD හෝ Watermark රහිත වීඩියෝව තෝරාගැනීම
                     let videoToDownload = videoData.play;
                     if (quality === 'hd' && videoData.hdplay) {
                         videoToDownload = videoData.hdplay;
