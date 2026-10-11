@@ -69,63 +69,51 @@ async function connectToWhatsApp() {
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.fromMe) return;
-        const messageType = Object.keys(m.message)[0];
         const sender = m.key.remoteJid;
-
-        if (messageType === 'viewOnceMessage' || messageType === 'viewOnceMessageV2') {
-            try {
-                const actualMessage = m.message[messageType].message;
-                const mediaType = Object.keys(actualMessage)[0];
-                const stream = await downloadMediaMessage(
-                    { message: actualMessage, key: m.key },
-                    'buffer',
-                    {},
-                    { logger: pino({ level: 'silent' }) }
-                );
-                if (mediaType === 'imageMessage') {
-                    await sock.sendMessage(sender, { image: stream, caption: '💾 Saved View Once Image!' });
-                } else if (mediaType === 'videoMessage') {
-                    await sock.sendMessage(sender, { video: stream, caption: '💾 Saved View Once Video!' });
-                }
-            } catch (err) {
-                console.log('Error downloading view once:', err);
-            }
-        }
 
         const text = m.message.conversation || m.message.extendedTextMessage?.text;
         if (!text) return;
 
-        if (text.startsWith('!dp ')) {
-            const number = text.split(' ')[1].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
-            try {
-                const dpUrl = await sock.profilePictureUrl(number, 'image');
-                await sock.sendMessage(sender, { image: { url: dpUrl }, caption: 'Here is the Profile Picture!' });
-            } catch (e) {
-                await sock.sendMessage(sender, { text: 'Could not fetch profile picture.' });
-            }
+        // බොට් එක අවදි කිරීමට සහ පරීක්ෂා කිරීමට ping විධානය
+        if (text.toLowerCase() === '!ping') {
+            await sock.sendMessage(sender, { text: 'Bot is active and running! 🚀' });
+            return;
         }
 
+        // TikTok ඩවුන්ලෝඩ් විධානය (HD සහ Normal ගුණාත්මක භාවයෙන්)
         if (text.startsWith('!tiktok ')) {
-            const tikTokUrl = text.split(' ')[1];
+            const args = text.split(' ');
+            const tikTokUrl = args[1];
+            const quality = args[2] ? args[2].toLowerCase() : 'normal'; // hd හෝ normal
+
             if (!tikTokUrl) {
-                await sock.sendMessage(sender, { text: 'Please provide a valid TikTok link.' });
+                await sock.sendMessage(sender, { text: 'කරුණාකර TikTok ලින්ක් එකක් ලබා දෙන්න. (උදා: !tiktok [link] hd)' });
                 return;
             }
-            await sock.sendMessage(sender, { text: 'Downloading TikTok video, please wait...' });
+
+            await sock.sendMessage(sender, { text: 'TikTok වීඩියෝව සකස් කරමින් පවතී, කරුණාකර රැඳී සිටින්න...' });
+            
             try {
                 const res = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(tikTokUrl)}`);
                 if (res.data && res.data.code === 0 && res.data.data) {
                     const videoData = res.data.data;
+                    
+                    // HD හෝ Watermark රහිත වීඩියෝව තෝරාගැනීම
+                    let videoToDownload = videoData.play;
+                    if (quality === 'hd' && videoData.hdplay) {
+                        videoToDownload = videoData.hdplay;
+                    }
+
                     await sock.sendMessage(sender, { 
-                        video: { url: videoData.play }, 
-                        caption: `*Title:* ${videoData.title || 'TikTok Video'}\n*Author:* ${videoData.author?.nickname || 'Unknown'}` 
+                        video: { url: videoToDownload }, 
+                        caption: `*Title:* ${videoData.title || 'TikTok Video'}\n*Author:* ${videoData.author?.nickname || 'Unknown'}\n*Quality:* ${quality.toUpperCase()}` 
                     });
                 } else {
-                    await sock.sendMessage(sender, { text: 'Failed to fetch TikTok video. Please try another link.' });
+                    await sock.sendMessage(sender, { text: 'TikTok වීඩියෝව ලබා ගැනීමට නොහැකි විය. වෙනත් ලින්ක් එකක් උත්සාහ කරන්න.' });
                 }
             } catch (e) {
                 console.log('TikTok error:', e.message);
-                await sock.sendMessage(sender, { text: 'Error processing TikTok link.' });
+                await sock.sendMessage(sender, { text: 'TikTok ලින්ක් එක ප්‍රොසෙස් කිරීමේදී දෝෂයක් ඇති විය.' });
             }
         }
     });
